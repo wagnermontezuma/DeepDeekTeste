@@ -7,22 +7,18 @@ export default {
   theme: {
     extend: {
       colors: {
-        primary: {
-          DEFAULT: '#6366f1', // Indigo fluorescente
-          dark: '#4f46e5',
-          light: '#818cf8'
-        },
-        dark: {
-          DEFAULT: '#1a1b26', // Fundo escuro elegante
-          lighter: '#24283b',
-          lightest: '#2f334d'
+        jumbo: {
+          DEFAULT: '#7BC96F', // Verde grama claro
+          light: '#93D388',
+          dark: '#63B357'
         }
       },
       animation: {
         'fade-in': 'fadeIn 0.3s ease-in-out',
         'slide-in': 'slideIn 0.4s ease-out',
         'bounce-in': 'bounceIn 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55)',
-        'typing': 'typing 1.2s infinite'
+        'typing': 'typing 1.2s infinite',
+        'message-in': 'messageIn 0.3s ease-out'
       },
       keyframes: {
         fadeIn: {
@@ -43,6 +39,10 @@ export default {
           '0%': { transform: 'translateY(0px)' },
           '28%': { transform: 'translateY(-5px)' },
           '44%': { transform: 'translateY(0px)' }
+        },
+        messageIn: {
+          '0%': { transform: 'translateX(-10px)', opacity: '0' },
+          '100%': { transform: 'translateX(0)', opacity: '1' }
         }
       }
     },
