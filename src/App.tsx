@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
-import { FiSend, FiTrash2 } from 'react-icons/fi';
-import { ChatMessage } from './types/chat';
+import { FiSend, FiTrash2, FiLoader } from 'react-icons/fi';
+import { LuBrain } from 'react-icons/lu';
+import { ChatMessage, ApiResponse } from './types/chat';
 
 const API_URL = 'http://localhost:3000';
+const MAX_INPUT_LENGTH = 5000; // Define o limite de caracteres
 
 // SVG do logo JumboIA (elefante estilizado)
 const JumboLogo = () => (
@@ -32,9 +34,10 @@ const TypingIndicator = () => (
 
 function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [inputMessage, setInputMessage] = useState('');
+  const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [humanizingMessageId, setHumanizingMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Função para rolar para a última mensagem
@@ -47,20 +50,30 @@ function App() {
     scrollToBottom();
   }, [messages]);
 
-  // Função para enviar mensagem para a API
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputMessage.trim() || isLoading) return;
+  const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    // Verifica o limite antes de atualizar o estado
+    if (event.target.value.length <= MAX_INPUT_LENGTH) {
+      setInput(event.target.value);
+    }
+  };
+
+  const sendMessage = async (event?: React.FormEvent<HTMLFormElement>) => {
+    if (event) {
+      event.preventDefault();
+    }
+    
+    // Verifica o limite e se está vazio/loading
+    if (!input.trim() || isLoading || input.length > MAX_INPUT_LENGTH) return; 
 
     const newMessage: ChatMessage = {
       id: Date.now().toString(),
-      sender: 'user',
-      text: inputMessage.trim(),
-      timestamp: new Date()
+      role: 'user',
+      content: input.trim(),
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
     setMessages(prev => [...prev, newMessage]);
-    setInputMessage('');
+    setInput('');
     setIsLoading(true);
     setError(null);
 
@@ -70,7 +83,7 @@ function App() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ question: newMessage.text }),
+        body: JSON.stringify({ question: newMessage.content }),
       });
 
       if (!response.ok) {
@@ -82,9 +95,9 @@ function App() {
       
       const botMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
-        sender: 'bot',
-        text: data.answer,
-        timestamp: new Date()
+        role: 'assistant',
+        content: data.answer,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
 
       setMessages(prev => [...prev, botMessage]);
@@ -99,6 +112,41 @@ function App() {
   const clearChat = () => {
     setMessages([]);
     setError(null);
+  };
+
+  const handleHumanize = async (messageId: string, textToHumanize: string) => {
+    if (humanizingMessageId) return;
+
+    setHumanizingMessageId(messageId);
+    setError(null);
+
+    try {
+      const response = await fetch(`${API_URL}/humanize`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text: textToHumanize }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Falha ao humanizar o texto.');
+      }
+
+      setMessages((prevMessages) =>
+        prevMessages.map((msg) =>
+          msg.id === messageId ? { ...msg, content: data.humanizedText } : msg
+        )
+      );
+
+    } catch (err: any) {
+      console.error('Erro ao humanizar:', err);
+      setError(err.message || 'Erro desconhecido ao humanizar.');
+    } finally {
+      setHumanizingMessageId(null);
+    }
   };
 
   return (
@@ -120,32 +168,46 @@ function App() {
       {/* Área de mensagens com fundo branco */}
       <main className="flex-1 overflow-y-auto p-4 space-y-4 bg-white">
         <div className="max-w-4xl mx-auto space-y-6">
-          {messages.map((message) => (
+          {messages.map((msg) => (
             <div
-              key={message.id}
-              className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'} animate-message-in`}
+              key={msg.id}
+              className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-message-in`}
             >
               <div
-                className={`flex items-start space-x-2 max-w-[80%] ${
-                  message.sender === 'user' ? 'flex-row-reverse space-x-reverse' : ''
+                className={`relative group flex items-start space-x-2 max-w-[80%] ${
+                  msg.role === 'user' ? 'flex-row-reverse space-x-reverse' : ''
                 }`}
               >
-                {message.sender === 'bot' && (
-                  <div className="w-8 h-8 rounded-full bg-jumbo/10 flex items-center justify-center">
+                {msg.role === 'assistant' && (
+                  <div className="w-8 h-8 rounded-full bg-jumbo/10 flex items-center justify-center flex-shrink-0">
                     <JumboLogo />
                   </div>
                 )}
                 <div
                   className={`p-4 rounded-2xl ${
-                    message.sender === 'user'
+                    msg.role === 'user'
                       ? 'bg-gray-100 border border-gray-200'
                       : 'bg-white shadow-md border-l-4 border-l-jumbo'
                   }`}
                 >
-                  <p className="whitespace-pre-wrap">{message.text}</p>
+                  <p className="whitespace-pre-wrap">{msg.content}</p>
                   <span className="text-xs text-gray-500 mt-2 block">
-                    {new Date(message.timestamp).toLocaleTimeString()}
+                    {msg.timestamp}
                   </span>
+                  {msg.role === 'assistant' && (
+                    <button
+                      onClick={() => handleHumanize(msg.id, msg.content)}
+                      disabled={!!humanizingMessageId}
+                      className={`absolute -top-2 -right-2 p-1 bg-white rounded-full shadow-md text-gray-500 hover:text-jumbo transition-opacity duration-300 opacity-0 group-hover:opacity-100 disabled:opacity-50 disabled:cursor-not-allowed ${humanizingMessageId === msg.id ? 'animate-pulse' : ''}`}
+                      title="Humanizar texto"
+                    >
+                      {humanizingMessageId === msg.id ? (
+                        <FiLoader className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <LuBrain className="w-4 h-4" />
+                      )}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -175,22 +237,30 @@ function App() {
         </div>
       </main>
 
-      {/* Input fixo com fundo branco */}
+      {/* Input Footer */}
       <footer className="bg-white border-t border-gray-100 p-4 shadow-sm">
-        <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={inputMessage}
-              onChange={(e) => setInputMessage(e.target.value)}
-              placeholder="Digite sua mensagem..."
-              className="flex-1 p-3 rounded-xl bg-white border border-gray-200 focus:border-jumbo focus:ring-1 focus:ring-jumbo text-gray-800 placeholder-gray-400 transition-all duration-300 outline-none"
-              disabled={isLoading}
-            />
+        <form onSubmit={sendMessage} className="max-w-4xl mx-auto">
+          <div className="flex gap-2 items-start"> {/* Alterado para items-start para alinhar contador */}
+            <div className="flex-1 flex flex-col"> {/* Div para agrupar input e contador */}
+              <input
+                type="text"
+                value={input}
+                onChange={handleInputChange}
+                placeholder="Digite sua mensagem..."
+                className="flex-1 p-3 rounded-xl bg-white border border-gray-200 focus:border-jumbo focus:ring-1 focus:ring-jumbo text-gray-800 placeholder-gray-400 transition-all duration-300 outline-none"
+                disabled={isLoading}
+                maxLength={MAX_INPUT_LENGTH} // Adiciona atributo HTML para reforçar limite
+              />
+              {/* Contador de Caracteres */}
+              <div className="text-xs text-gray-400 text-right pr-2 pt-1">
+                {input.length}/{MAX_INPUT_LENGTH}
+              </div>
+            </div>
             <button
               type="submit"
-              disabled={isLoading || !inputMessage.trim()}
-              className="p-3 bg-jumbo hover:bg-jumbo-dark text-white rounded-xl transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-md"
+              // Desabilita se exceder o limite também
+              disabled={isLoading || !input.trim() || input.length > MAX_INPUT_LENGTH} 
+              className="p-3 bg-jumbo hover:bg-jumbo-dark text-white rounded-xl transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-md mt-1" // Adicionado mt-1 para alinhar melhor
             >
               <FiSend className="w-5 h-5" />
             </button>
